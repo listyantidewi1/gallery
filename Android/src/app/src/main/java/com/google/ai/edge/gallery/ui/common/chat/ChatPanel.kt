@@ -17,18 +17,16 @@
 package com.google.ai.edge.gallery.ui.common.chat
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,14 +40,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -77,7 +82,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.dimensionResource
@@ -103,10 +108,8 @@ import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.customColors
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
-private const val SCROLL_ANIMATION_DURATION_MS = 300
+private const val TAG = "AGChatPanel"
 
 /** Composable function for the main chat panel, displaying messages and handling user input. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,6 +134,12 @@ fun ChatPanel(
   showImagePicker: Boolean = false,
   showAudioPicker: Boolean = false,
   emptyStateComposable: @Composable (Model) -> Unit = {},
+  onFeedbackSubmitted:
+    (
+      isPositive: Boolean, comment: String, selectedChips: List<String>, agentMessageIndex: Int,
+    ) -> Unit =
+    { _, _, _, _ ->
+    },
 ) {
   val uiState by viewModel.uiState.collectAsState()
   val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
@@ -167,6 +176,7 @@ fun ChatPanel(
 
   var curMessage by remember { mutableStateOf("") } // Correct state
   val focusManager = LocalFocusManager.current
+  val context = LocalContext.current
 
   // List state to control scrolling.
   val listState = rememberScrollState()
@@ -175,6 +185,9 @@ fun ChatPanel(
   val benchmarkMessage: MutableState<ChatMessage?> = remember { mutableStateOf(null) }
 
   var showErrorDialog by remember { mutableStateOf(false) }
+  var showFeedbackDialog by remember { mutableStateOf(false) }
+  var isPositiveFeedback by remember { mutableStateOf(true) }
+  var feedbackMessageIndex by remember { mutableIntStateOf(-1) }
 
   var showAudioRecorder by remember { mutableStateOf(false) }
   var curAmplitude by remember { mutableIntStateOf(0) }
@@ -514,6 +527,50 @@ fun ChatPanel(
                       horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                       LatencyText(message = message)
+                      if (message is ChatMessageText && !uiState.inProgress) {
+                        val isUpHighlighted = message.feedbackRating == true
+                        val isDownHighlighted = message.feedbackRating == false
+
+                        IconButton(
+                          onClick = {
+                            Log.d(TAG, "Thumbs Up clicked on response at index: $index")
+                            isPositiveFeedback = true
+                            feedbackMessageIndex = index
+                            showFeedbackDialog = true
+                          },
+                          modifier = Modifier.size(28.dp),
+                        ) {
+                          Icon(
+                            imageVector =
+                              if (isUpHighlighted) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                            contentDescription = "Thumbs Up",
+                            tint =
+                              if (isUpHighlighted) MaterialTheme.colorScheme.primary
+                              else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp),
+                          )
+                        }
+                        IconButton(
+                          onClick = {
+                            Log.d(TAG, "Thumbs Down clicked on response at index: $index")
+                            isPositiveFeedback = false
+                            feedbackMessageIndex = index
+                            showFeedbackDialog = true
+                          },
+                          modifier = Modifier.size(28.dp),
+                        ) {
+                          Icon(
+                            imageVector =
+                              if (isDownHighlighted) Icons.Filled.ThumbDown
+                              else Icons.Outlined.ThumbDown,
+                            contentDescription = "Thumbs Down",
+                            tint =
+                              if (isDownHighlighted) MaterialTheme.colorScheme.primary
+                              else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(18.dp),
+                          )
+                        }
+                      }
                     }
                   } else if (message.side == ChatSide.USER) {
                     Row(
@@ -692,19 +749,52 @@ fun ChatPanel(
       },
     )
   }
+
+  // Feedback dialog.
+  if (showFeedbackDialog) {
+    val positiveChips =
+      if (task.id == BuiltInTaskId.LLM_CHAT) {
+        listOf("Accurate", "Easy to Understand", "Creative", "Informative", "Other")
+      } else {
+        listOf("Correct Action", "Helpful", "Fast", "Successful", "Other")
+      }
+    val negativeChips =
+      if (task.id == BuiltInTaskId.LLM_CHAT) {
+        listOf(
+          "Factually Inaccurate",
+          "Offensive/Unsafe",
+          "Didn't follow instructions",
+          "Too long",
+          "Other",
+        )
+      } else {
+        listOf("Incorrect Action", "Failed execution", "Slow", "Confusing Behavior", "Other")
+      }
+    val chips = if (isPositiveFeedback) positiveChips else negativeChips
+
+    FeedbackDialog(
+      isPositive = isPositiveFeedback,
+      chips = chips,
+      onDismiss = { showFeedbackDialog = false },
+      onSubmit = { comment, selectedChips ->
+        Log.d(
+          TAG,
+          "FeedbackDialog onSubmit. Comment length: ${comment.length}, selected chips: ${selectedChips.joinToString(",")}",
+        )
+        showFeedbackDialog = false
+        onFeedbackSubmitted(isPositiveFeedback, comment, selectedChips, feedbackMessageIndex)
+      },
+    )
+  }
 }
 
-private suspend fun scrollToBottom(
-  listState: ScrollState,
-  animate: Boolean = false,
-  animationDurationMs: Int = SCROLL_ANIMATION_DURATION_MS,
-) {
-  if (animate) {
-    listState.animateScrollTo(
-      listState.maxValue,
-      animationSpec = tween(durationMillis = animationDurationMs, easing = FastOutSlowInEasing),
-    )
-  } else {
-    listState.scrollTo(listState.maxValue)
+private suspend fun scrollToBottom(listState: LazyListState, animate: Boolean = false) {
+  val itemCount = listState.layoutInfo.totalItemsCount
+  if (itemCount > 0) {
+    if (animate) {
+      listState.animateScrollToItem(itemCount - 1, scrollOffset = 1000000)
+    } else {
+      listState.scrollToItem(itemCount - 1, scrollOffset = 1000000)
+    }
   }
 }

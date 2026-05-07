@@ -28,10 +28,12 @@ import com.google.ai.edge.gallery.GalleryLifecycleProvider
 import com.google.ai.edge.gallery.SettingsSerializer
 import com.google.ai.edge.gallery.SkillsSerializer
 import com.google.ai.edge.gallery.UserDataSerializer
+import com.google.ai.edge.gallery.data.AuthTokenProvider
 import com.google.ai.edge.gallery.data.DataStoreRepository
 import com.google.ai.edge.gallery.data.DefaultDataStoreRepository
 import com.google.ai.edge.gallery.data.DefaultDownloadRepository
 import com.google.ai.edge.gallery.data.DownloadRepository
+import com.google.ai.edge.gallery.data.FeedbackApiKey
 import com.google.ai.edge.gallery.proto.BenchmarkResults
 import com.google.ai.edge.gallery.proto.CutoutCollection
 import com.google.ai.edge.gallery.proto.Settings
@@ -182,5 +184,25 @@ internal object AppModule {
     lifecycleProvider: AppLifecycleProvider,
   ): DownloadRepository {
     return DefaultDownloadRepository(context, lifecycleProvider)
+  }
+
+  // Provides AuthTokenProvider stub implementation
+  @Provides
+  @Singleton
+  fun provideAuthTokenProvider(): AuthTokenProvider {
+    return object : AuthTokenProvider {
+      override suspend fun getAuthToken(scope: String): String? {
+        return null
+      }
+    }
+  }
+
+  // Provides FeedbackApiKey
+  @Provides
+  @Singleton
+  @FeedbackApiKey
+  fun provideFeedbackApiKey(): String {
+    // TODO: Add the staging/sandbox Listnr API key here for anonymous feedback submissions
+    return ""
   }
 }

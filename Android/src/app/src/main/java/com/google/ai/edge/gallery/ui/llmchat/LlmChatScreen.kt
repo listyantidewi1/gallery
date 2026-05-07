@@ -323,5 +323,16 @@ fun ChatViewWrapper(
     onSystemPromptChanged = onSystemPromptChanged,
     sendMessageTrigger = sendMessageTrigger,
     showAudioPicker = showAudioPicker,
+    onFeedbackSubmitted = { isPositive, comment, selectedChips, agentMessageIndex ->
+      val model = modelManagerViewModel.uiState.value.selectedModel
+      viewModel.submitFeedback(
+        task = task,
+        model = model,
+        isPositive = isPositive,
+        comment = comment,
+        selectedChips = selectedChips,
+        agentMessageIndex = agentMessageIndex,
+      )
+    },
   )
 }

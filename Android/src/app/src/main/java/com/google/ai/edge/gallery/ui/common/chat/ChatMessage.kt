@@ -63,15 +63,20 @@ open class ChatMessage(
   open val hideSenderLabel: Boolean = false,
   open val disableBubbleShape: Boolean = false,
 ) {
+  var feedbackRating: Boolean? = null
+
   open fun clone(): ChatMessage {
-    return ChatMessage(
-      type = type,
-      side = side,
-      latencyMs = latencyMs,
-      accelerator = accelerator,
-      hideSenderLabel = hideSenderLabel,
-      disableBubbleShape = disableBubbleShape,
-    )
+    val cloned =
+      ChatMessage(
+        type = type,
+        side = side,
+        latencyMs = latencyMs,
+        accelerator = accelerator,
+        hideSenderLabel = hideSenderLabel,
+        disableBubbleShape = disableBubbleShape,
+      )
+    cloned.feedbackRating = feedbackRating
+    return cloned
   }
 }
 
@@ -126,16 +131,19 @@ open class ChatMessageText(
     hideSenderLabel = hideSenderLabel,
   ) {
   override fun clone(): ChatMessageText {
-    return ChatMessageText(
-      content = content,
-      side = side,
-      latencyMs = latencyMs,
-      accelerator = accelerator,
-      isMarkdown = isMarkdown,
-      llmBenchmarkResult = llmBenchmarkResult,
-      hideSenderLabel = hideSenderLabel,
-      data = data,
-    )
+    val cloned =
+      ChatMessageText(
+        content = content,
+        side = side,
+        latencyMs = latencyMs,
+        accelerator = accelerator,
+        isMarkdown = isMarkdown,
+        llmBenchmarkResult = llmBenchmarkResult,
+        hideSenderLabel = hideSenderLabel,
+        data = data,
+      )
+    cloned.feedbackRating = feedbackRating
+    return cloned
   }
 }
 

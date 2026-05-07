@@ -19,11 +19,13 @@ package com.google.ai.edge.gallery.ui.llmchat
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import android.widget.Toast
 import androidx.datastore.core.DataStore
 import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.common.SystemPromptHelper
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.ModelFeedbackRepository
 import com.google.ai.edge.gallery.data.SystemPromptRepository
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.proto.UserData
@@ -43,6 +45,7 @@ import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ToolProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -56,6 +59,8 @@ private const val TAG = "AGLlmChatViewModel"
 open class LlmChatViewModelBase(
   private val systemPromptRepository: SystemPromptRepository? = null,
   userDataDataStore: DataStore<UserData>? = null,
+  private val modelFeedbackRepository: ModelFeedbackRepository? = null,
+  protected val context: Context? = null,
 ) : ChatViewModel(userDataDataStore) {
   private val _uiSystemPrompt = MutableStateFlow("")
   val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
@@ -409,6 +414,116 @@ open class LlmChatViewModelBase(
       )
     }
   }
+
+  fun submitFeedback(
+    task: Task,
+    model: Model,
+    isPositive: Boolean,
+    comment: String,
+    selectedChips: List<String>,
+    agentMessageIndex: Int,
+  ) {
+    val modelFeedbackRepository = modelFeedbackRepository ?: return
+    val messages = uiState.value.messagesByModel[model.name] ?: return
+    if (agentMessageIndex < 0 || agentMessageIndex >= messages.size) return
+
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        Log.d(
+          TAG,
+          "submitFeedback triggered in VM. isPositive: $isPositive, comment length: ${comment.length}, chips: ${selectedChips.joinToString(",")}",
+        )
+        // Scan conversation history backwards to locate the corresponding user prompt.
+        var userPrompt = ""
+        for (j in (agentMessageIndex - 1) downTo 0) {
+          val msg = messages[j]
+          if (msg.side == ChatSide.USER && msg is ChatMessageText) {
+            userPrompt = msg.content
+            break
+          }
+        }
+
+        // Format conversation history up to the rated agent message index
+        val chatHistoryText = StringBuilder()
+        for (j in 0..agentMessageIndex) {
+          val msg = messages[j]
+          val sender =
+            when (msg.side) {
+              ChatSide.USER -> "User"
+              ChatSide.AGENT -> "Agent"
+              ChatSide.SYSTEM -> "System"
+            }
+          if (msg is ChatMessageText) {
+            chatHistoryText.append("$sender: ${msg.content}\n\n")
+          }
+        }
+
+        val modelResponse = (messages[agentMessageIndex] as? ChatMessageText)?.content ?: ""
+
+        val temperature = model.getFloatConfigValue(ConfigKeys.TEMPERATURE, 0.7f).toString()
+        val topK = model.getIntConfigValue(ConfigKeys.TOPK, 40).toString()
+        val topP = model.getFloatConfigValue(ConfigKeys.TOPP, 0.9f).toString()
+        val modelVersion = "1.0"
+
+        Log.d(
+          TAG,
+          "Submitting feedback. userPrompt length: ${userPrompt.length}, modelResponse length: ${modelResponse.length}, history length: ${chatHistoryText.length}, temperature: $temperature, topK: $topK, topP: $topP",
+        )
+
+        val result =
+          modelFeedbackRepository.submitFeedback(
+            isPositive = isPositive,
+            description = comment,
+            selectedChips = selectedChips,
+            userPrompt = userPrompt,
+            modelResponse = modelResponse,
+            modelId = model.name,
+            modelVersion = modelVersion,
+            temperature = temperature,
+            topK = topK,
+            topP = topP,
+            extraPsd = mapOf("feature_card" to task.id),
+            conversationHistory = chatHistoryText.toString(),
+          )
+
+        result
+          .onSuccess {
+            Log.i(TAG, "Feedback submitted successfully!")
+            viewModelScope.launch(Dispatchers.Main) {
+              context?.let {
+                Toast.makeText(it, "Thank you for submitting feedback (test)", Toast.LENGTH_SHORT)
+                  .show()
+              }
+            }
+            val currentMessages = uiState.value.messagesByModel[model.name]
+            if (
+              currentMessages != null &&
+                agentMessageIndex >= 0 &&
+                agentMessageIndex < currentMessages.size
+            ) {
+              val ratedMessage = currentMessages[agentMessageIndex].clone()
+              ratedMessage.feedbackRating = isPositive
+              replaceMessage(model = model, index = agentMessageIndex, message = ratedMessage)
+            }
+          }
+          .onFailure { e ->
+            Log.e(TAG, "Feedback submission failed", e)
+            viewModelScope.launch(Dispatchers.Main) {
+              context?.let {
+                Toast.makeText(
+                    it,
+                    "Network connection failed. Feedback not submitted.",
+                    Toast.LENGTH_SHORT,
+                  )
+                  .show()
+              }
+            }
+          }
+      } catch (e: Exception) {
+        Log.e(TAG, "Error submitting feedback", e)
+      }
+    }
+  }
 }
 
 @HiltViewModel
@@ -417,7 +532,10 @@ class LlmChatViewModel
 constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore)
+  modelFeedbackRepository: ModelFeedbackRepository,
+  @ApplicationContext context: Context,
+) :
+  LlmChatViewModelBase(systemPromptRepository, userDataDataStore, modelFeedbackRepository, context)
 
 @HiltViewModel
 class LlmAskImageViewModel
@@ -425,7 +543,10 @@ class LlmAskImageViewModel
 constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore)
+  modelFeedbackRepository: ModelFeedbackRepository,
+  @ApplicationContext context: Context,
+) :
+  LlmChatViewModelBase(systemPromptRepository, userDataDataStore, modelFeedbackRepository, context)
 
 @HiltViewModel
 class LlmAskAudioViewModel
@@ -433,4 +554,7 @@ class LlmAskAudioViewModel
 constructor(
   systemPromptRepository: SystemPromptRepository,
   userDataDataStore: DataStore<UserData>,
-) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore)
+  modelFeedbackRepository: ModelFeedbackRepository,
+  @ApplicationContext context: Context,
+) :
+  LlmChatViewModelBase(systemPromptRepository, userDataDataStore, modelFeedbackRepository, context)
