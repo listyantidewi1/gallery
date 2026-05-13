@@ -25,27 +25,23 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -70,6 +66,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.google.ai.edge.gallery.GalleryEvent
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.BuiltInTaskId
@@ -79,6 +77,8 @@ import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.firebaseAnalytics
 import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
+import com.google.ai.edge.gallery.ui.common.saveBitmapToMediaStore
+import com.google.ai.edge.gallery.ui.common.shareBitmap
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import java.io.File
@@ -396,48 +396,91 @@ fun ChatView(
             }
 
             // Image viewer.
-            AnimatedVisibility(
-              visible = showImageViewer,
-              enter = slideInVertically(initialOffsetY = { fullHeight -> fullHeight }) + fadeIn(),
-              exit = slideOutVertically(targetOffsetY = { fullHeight -> fullHeight }) + fadeOut(),
-            ) {
-              val pagerState =
-                rememberPagerState(
-                  pageCount = { allImageViewerImages.size },
-                  initialPage = selectedImageIndex,
-                )
-              val scrollEnabled = remember { mutableStateOf(true) }
-              Box(
-                modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
+            if (showImageViewer) {
+              Dialog(
+                onDismissRequest = { showImageViewer = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
               ) {
-                HorizontalPager(
-                  state = pagerState,
-                  userScrollEnabled = scrollEnabled.value,
-                  modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.95f)),
-                ) { page ->
-                  allImageViewerImages[page].let { image ->
-                    ZoomableImage(
-                      bitmap = image.asImageBitmap(),
-                      pagerState = pagerState,
-                      modifier = Modifier.fillMaxSize(),
+                val pagerState =
+                  rememberPagerState(
+                    pageCount = { allImageViewerImages.size },
+                    initialPage = selectedImageIndex,
+                  )
+                val scrollEnabled = remember { mutableStateOf(true) }
+                Box(modifier = Modifier.fillMaxSize()) {
+                  HorizontalPager(
+                    state = pagerState,
+                    userScrollEnabled = scrollEnabled.value,
+                    modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.95f)),
+                  ) { page ->
+                    allImageViewerImages[page].let { image ->
+                      ZoomableImage(
+                        bitmap = image.asImageBitmap(),
+                        pagerState = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                      )
+                    }
+                  }
+
+                  val curBitmap = allImageViewerImages.getOrNull(pagerState.currentPage)
+
+                  // Share button (bottom left).
+                  IconButton(
+                    onClick = {
+                      curBitmap?.let { bitmap ->
+                        context.shareBitmap(bitmap, "chat_image_${System.currentTimeMillis()}.png")
+                      }
+                    },
+                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                  ) {
+                    Icon(
+                      Icons.Rounded.Share,
+                      contentDescription = stringResource(R.string.share),
+                      tint = Color.White,
                     )
                   }
-                }
 
-                // Close button.
-                IconButton(
-                  onClick = { showImageViewer = false },
-                  colors =
-                    IconButtonDefaults.iconButtonColors(
-                      containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                  modifier = Modifier.offset(x = (-8).dp, y = 8.dp).align(Alignment.TopEnd),
-                ) {
-                  Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = stringResource(R.string.cd_close_image_viewer_icon),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                  )
+                  // Download button (bottom right).
+                  IconButton(
+                    onClick = {
+                      curBitmap?.let { bitmap ->
+                        scope.launch {
+                          val success =
+                            context.saveBitmapToMediaStore(
+                              bitmap,
+                              "chat_image_${System.currentTimeMillis()}.png",
+                            )
+                          if (success) {
+                            Toast.makeText(
+                                context,
+                                R.string.snackbar_save_to_album_success,
+                                Toast.LENGTH_SHORT,
+                              )
+                              .show()
+                          }
+                        }
+                      }
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                  ) {
+                    Icon(
+                      Icons.Rounded.Download,
+                      contentDescription = stringResource(R.string.save),
+                      tint = Color.White,
+                    )
+                  }
+
+                  // Close button (top right).
+                  IconButton(
+                    onClick = { showImageViewer = false },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                  ) {
+                    Icon(
+                      Icons.Rounded.Close,
+                      contentDescription = stringResource(R.string.cd_close_image_viewer_icon),
+                      tint = Color.White,
+                    )
+                  }
                 }
               }
             }
