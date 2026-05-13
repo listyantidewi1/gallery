@@ -996,6 +996,18 @@ constructor(
               model.configs = newConfigs
             }
           }
+
+          // Gemma Rescue Grid: any image-capable LLM (E2B / E4B) can power
+          // on-device disaster triage. The allowlist JSON doesn't know about
+          // our custom task id, so attach matching models here.
+          if (allowedModel.taskTypes.contains(BuiltInTaskId.LLM_ASK_IMAGE)) {
+            val triageTask =
+              curTasks.find {
+                it.id ==
+                  com.google.ai.edge.gallery.customtasks.disastertriage.DisasterTriageTask.TASK_ID
+              }
+            triageTask?.models?.add(model)
+          }
         }
 
         // Find models from allowlist if a task's `modelNames` field is not empty.
