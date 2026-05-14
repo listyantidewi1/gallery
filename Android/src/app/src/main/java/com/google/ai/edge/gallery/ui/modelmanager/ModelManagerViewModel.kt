@@ -227,7 +227,15 @@ constructor(
   }
 
   fun getActiveCustomTasks(): List<CustomTask> {
-    return customTasks.toList()
+    // Gemma Rescue Grid: the fork only ships the Disaster Triage flow.
+    // Filter the Hilt-injected CustomTask set to just our task so the home
+    // screen, model registry, and navigation only see what's relevant. To
+    // re-enable the gallery's other tiles (Chat, Ask Image, Mobile Actions,
+    // Tiny Garden, Agent Chat, etc.), remove the filter below.
+    return customTasks.filter {
+      it.task.id ==
+        com.google.ai.edge.gallery.customtasks.disastertriage.DisasterTriageTask.TASK_ID
+    }
   }
 
   fun getSelectedModel(): Model? {
