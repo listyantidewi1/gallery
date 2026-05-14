@@ -96,6 +96,8 @@ dependencies {
   implementation(libs.tflite.gpu)
   implementation(libs.tflite.support)
   implementation(libs.play.services.location)
+  implementation(libs.zxing.core)
+  implementation(libs.zxing.android.embedded)
   implementation(libs.camerax.core)
   implementation(libs.camerax.camera2)
   implementation(libs.camerax.lifecycle)
