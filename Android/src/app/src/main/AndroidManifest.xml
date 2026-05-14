@@ -98,6 +98,17 @@
 
                 <data android:scheme="com.google.ai.edge.gallery" />
             </intent-filter>
+
+            <!-- Gemma Rescue Grid: receive EdgeTriageReport JSON from
+                 Android Share Sheet (Bluetooth, Nearby Share, messaging
+                 apps, etc.). The DisasterTriage screen inspects the
+                 launch intent on mount, parses the EXTRA_TEXT as an
+                 EdgeTriageReport, and enqueues it locally. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
 
         <!-- Set themes for activities that are used for viewing open source licenses -->
