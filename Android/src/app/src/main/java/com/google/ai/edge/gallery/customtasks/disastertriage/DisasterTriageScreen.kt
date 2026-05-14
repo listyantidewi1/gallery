@@ -201,6 +201,12 @@ fun DisasterTriageScreen(
   // re-share an existing pending report with another phone.
   var qrReport by remember { mutableStateOf<LocalReport?>(null) }
 
+  // Transient status text shown under the Scan/Share area. Declared up
+  // here (not next to the QR scanner) because the inbound share-intent
+  // LaunchedEffect below also writes to it — Kotlin would otherwise see
+  // an unresolved forward reference.
+  var scanFeedback by remember { mutableStateOf<String?>(null) }
+
   // Inbound share intent: if the host Activity was launched (or
   // re-resumed) via ACTION_SEND with text/plain that parses as an
   // EdgeTriageReport, ingest it the same way a QR scan would. Runs once
@@ -238,7 +244,6 @@ fun DisasterTriageScreen(
   // local queue + schedule a background sync. This is how a phone with no
   // connectivity hands a report to another phone (the other phone scans
   // this one's screen) without any radio or pairing.
-  var scanFeedback by remember { mutableStateOf<String?>(null) }
   val scanLauncher =
     rememberLauncherForActivityResult(QrCodeScanContract()) { result ->
       when (result) {
