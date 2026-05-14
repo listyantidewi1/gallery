@@ -871,18 +871,22 @@ private fun TaskList(
           // wrapping lines.
           BuiltInTaskId.LLM_AGENT_CHAT to "Have Gemma 4 complete agentic tasks for\u00A0you",
         )
+      // Defensive: listOfNotNull instead of listOf + !! so a fork that
+      // doesn't ship the built-in Chat / Agent Chat tasks degrades to "no
+      // highlighted tiles" instead of crashing the home screen.
       for (task in
-        listOf(
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)!!,
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_AGENT_CHAT)!!,
+        listOfNotNull(
+          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT),
+          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_AGENT_CHAT),
         )) {
+        val description = chatToDescription[task.id] ?: continue
         TaskCard(
           task = task,
           index = 0,
           animate = !initialAnimationDone && enableAnimation,
           onClick = { navigateToTaskScreen(task) },
           modifier = Modifier.fillMaxWidth(),
-          description = chatToDescription[task.id]!!,
+          description = description,
         )
       }
 

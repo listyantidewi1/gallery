@@ -214,7 +214,13 @@ fun GalleryNavHost(
             },
             onModelsClicked = { navController.navigate(ROUTE_MODEL_MANAGER) },
             onNotificationsClicked = { navController.navigate(ROUTE_NOTIFICATIONS) },
-            gm4 = true,
+            // gm4 = true triggers a 'highlighted Chat / Agent Chat' block at
+            // the top of HomeScreen.kt that hard-requires those tasks to
+            // exist (uses !! on getTaskById). Our fork filters the tile set
+            // down to just disaster_triage, so flipping this to false skips
+            // that block entirely. Re-enable if the full gallery is ever
+            // restored.
+            gm4 = false,
           )
         }
 
